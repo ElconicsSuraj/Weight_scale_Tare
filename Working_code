@@ -1,0 +1,71 @@
+#include "HX711.h"
+
+#define LOADCELL_DOUT_PIN  16
+#define LOADCELL_SCK_PIN   4
+#define vcc                2
+#define BUTTON_PIN         5
+
+// Flag to indicate if the button has been pressed
+volatile bool buttonPressed = false;
+
+// Variables for button debounce
+volatile unsigned long lastDebounceTime = 0;
+volatile unsigned long debounceDelay = 50;
+
+HX711 scale;
+
+float calibration_factor = 1740; // 351 for 5kg / 1755 for 1 kg worked for my 440lb max scale setup
+
+// Interrupt function for the button press
+void buttonInterrupt() {
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    buttonPressed = true;
+    // scale.set_scale();
+    // scale.tare(); // Reset the scale to 0
+  }
+  lastDebounceTime = millis();
+}
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(vcc, OUTPUT);
+  digitalWrite(vcc, HIGH);
+
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonInterrupt, FALLING);
+
+  scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+  scale.set_scale();
+
+  digitalWrite(vcc, LOW); // Power off momentarily to improve tare accuracy
+  delay(100);
+
+  scale.tare(); // Reset the scale to 0
+
+  digitalWrite(vcc, HIGH); // Power back on after taring
+
+  long zero_factor = scale.read_average(); // Get a baseline reading
+  Serial.print("Zero factor: ");
+  Serial.println(zero_factor);
+  pinMode(15, INPUT);
+}
+
+void loop() {
+  digitalWrite(vcc, HIGH);
+
+  if (buttonPressed) {
+    scale.set_scale();  // Reset scale calibration
+    scale.tare();       // Reset the scale to 0
+    buttonPressed = false;
+  }
+
+  scale.set_scale(calibration_factor); // Adjust to this calibration factor
+  delay(3000);
+
+  Serial.print("Reading: ");
+  Serial.print(scale.get_units(20), 1);
+  Serial.print(" Gram \t\n"); // Change this to kg and re-adjust the calibration factor if you follow SI units like a sane person
+  Serial.flush();
+
+  delay(1000);
+}
